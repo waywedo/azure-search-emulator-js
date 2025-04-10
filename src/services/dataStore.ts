@@ -99,6 +99,17 @@ export class DataStore<T extends object> {
     }
   }
 
+  public loadDocuments(documents: Record<string, unknown>[]) {
+    if (this.documents.length > 0) {
+      throw new Error('Cannot load documents into a non-empty data store.');
+    }
+
+    for (const candidate of documents) {
+      const document = this.toStoredDocument(candidate);
+      this.documents.push(document);
+    }
+  }
+
   public countDocuments(): number {
     return this.documents.length;
   }

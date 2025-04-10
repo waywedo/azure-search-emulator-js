@@ -1,129 +1,224 @@
-import { _throw } from './lib/_throw';
-import { createHttp404 } from './lib/http';
-import type { ODataSelect, ODataSelectResult } from './lib/odata';
-
-import type {
-  FindDocumentRequest,
-  PostDocumentsRequest,
-  SearchDocumentsPageResult,
-  SearchDocumentsRequest,
-  SuggestDocumentsResult,
-  Suggester,
-  SuggestRequest,
-  AutoCompleteRequest,
-  AutoCompleteDocumentResult,
-  Schema,
-  ScoringProfile
-} from './services';
+import { _throw } from "./lib/_throw";
+import { createHttp404 } from "./lib/http";
+import { saveIndex, saveDocuments, loadIndices, deleteIndex } from "./services/persistence";
 import {
-  DataStore,
-  SearchEngine,
-  SuggestEngine,
-  AutocompleteEngine,
-  SchemaService,
-  SearchBackend,
-  Scorer, AnalyzerService
-} from './services';
+    DataStore,
+    SearchEngine,
+    SuggestEngine,
+    AutocompleteEngine,
+    SchemaService,
+    SearchBackend,
+    Scorer,
+    AnalyzerService
+} from "./services";
+
+import type { ODataSelect, ODataSelectResult } from "./lib/odata";
+import type {
+    FindDocumentRequest,
+    PostDocumentsRequest,
+    SearchDocumentsPageResult,
+    SearchDocumentsRequest,
+    SuggestDocumentsResult,
+    Suggester,
+    SuggestRequest,
+    AutoCompleteRequest,
+    AutoCompleteDocumentResult,
+    Schema,
+    ScoringProfile
+} from "./services";
 
 export class Index<T extends object> {
-  public static createIndex<T extends object>(options: {
-    name: string,
-    schema: Schema,
-    suggesters?: Suggester[],
-    scoringProfiles?: ScoringProfile<T>[],
-    defaultScoringProfile?: string,
-  }) {
-    const schemaService = SchemaService.createSchemaService<T>(options.schema);
-    const analyzer = new AnalyzerService(schemaService);
-    const scorer = new Scorer<T>(schemaService, options.scoringProfiles ?? [], options.defaultScoringProfile ?? null);
-    const dataStore = new DataStore<T>(schemaService, analyzer);
+    public static createIndex<T extends object>(options: {
+        name: string;
+        schema: Schema;
+        suggesters?: Suggester[];
+        scoringProfiles?: ScoringProfile<T>[];
+        defaultScoringProfile?: string;
+    }) {
+        // persist definition and empty documents
+        saveIndex(options);
 
-    const searchBackend = new SearchBackend<T>(schemaService, () => dataStore.documents);
+        return Index._buildIndex<T>(options);
+    }
 
-    const searchEngine = new SearchEngine<T>(searchBackend, scorer);
-    const suggesterProvider = (name: string) => options.suggesters?.find(s => s.name === name) ?? _throw(new Error(`Unknown suggester ${name}`));
-    const suggestEngine = new SuggestEngine<T>(searchBackend, () => schemaService.keyField, suggesterProvider);
-    const autocompleteEngine = new AutocompleteEngine<T>(searchBackend, suggesterProvider);
+    public static loadIndex<T extends object>(
+        options: {
+            name: string;
+            schema: Schema;
+            suggesters?: Suggester[];
+            scoringProfiles?: ScoringProfile<T>[];
+            defaultScoringProfile?: string;
+        },
+        documents: Record<string, unknown>[]
+    ) {
+        const index = Index._buildIndex<T>(options);
 
-    return new Index<T>(options.name, dataStore, searchEngine, suggestEngine, autocompleteEngine);
-  }
+        index.dataStore.loadDocuments(documents);
 
-  private constructor(
-    public readonly name: string,
-    private dataStore: DataStore<T>,
-    private searchEngine: SearchEngine<T>,
-    private suggestEngine: SuggestEngine<T>,
-    private autocompleteEngine: AutocompleteEngine<T>,
-  ) {
-  }
+        return index;
+    }
 
-  /**
-   * https://learn.microsoft.com/en-us/rest/api/searchservice/addupdate-or-delete-documents
-   * @param documents
-   */
-  public postDocuments(documents: PostDocumentsRequest<T>) {
-    return this.dataStore.postDocuments(documents);
-  }
+    private static _buildIndex<T extends object>(options: {
+        name: string;
+        schema: Schema;
+        suggesters?: Suggester[];
+        scoringProfiles?: ScoringProfile<T>[];
+        defaultScoringProfile?: string;
+    }) {
+        const schemaService = SchemaService.createSchemaService<T>(
+            options.schema
+        );
+        const analyzer = new AnalyzerService(schemaService);
+        const scorer = new Scorer<T>(
+            schemaService,
+            options.scoringProfiles ?? [],
+            options.defaultScoringProfile ?? null
+        );
+        const dataStore = new DataStore<T>(schemaService, analyzer);
 
-  /**
-   * https://learn.microsoft.com/en-us/rest/api/searchservice/lookup-document
-   * @param request
-   */
-  public findDocument<Keys extends ODataSelect<T>>(request: FindDocumentRequest<T, Keys>): ODataSelectResult<T, Keys> {
-    return this.dataStore.findDocument(request);
-  }
+        const searchBackend = new SearchBackend<T>(
+            schemaService,
+            () => dataStore.documents
+        );
 
-  /**
-   * https://learn.microsoft.com/en-us/rest/api/searchservice/count-documents
-   */
-  public countDocuments(): number {
-    return this.dataStore.countDocuments();
-  }
+        const searchEngine = new SearchEngine<T>(searchBackend, scorer);
+        const suggesterProvider = (name: string) =>
+            options.suggesters?.find((s) => s.name === name) ??
+            _throw(new Error(`Unknown suggester ${name}`));
+        const suggestEngine = new SuggestEngine<T>(
+            searchBackend,
+            () => schemaService.keyField,
+            suggesterProvider
+        );
+        const autocompleteEngine = new AutocompleteEngine<T>(
+            searchBackend,
+            suggesterProvider
+        );
 
-  /**
-   * https://learn.microsoft.com/en-us/rest/api/searchservice/search-documents
-   * @param request
-   */
-  public search<Keys extends ODataSelect<T>>(request: SearchDocumentsRequest<T, Keys>): SearchDocumentsPageResult<ODataSelectResult<T, Keys>> {
-    return this.searchEngine.search(request);
-  }
+        return new Index<T>(
+            options.name,
+            dataStore,
+            searchEngine,
+            suggestEngine,
+            autocompleteEngine
+        );
+    }
 
-  /**
-   * https://learn.microsoft.com/en-us/rest/api/searchservice/autocomplete
-   * @param request
-   */
-  public autocomplete(request: AutoCompleteRequest): AutoCompleteDocumentResult {
-    return this.autocompleteEngine.autocomplete(request);
-  }
+    private constructor(
+        public readonly name: string,
+        private dataStore: DataStore<T>,
+        private searchEngine: SearchEngine<T>,
+        private suggestEngine: SuggestEngine<T>,
+        private autocompleteEngine: AutocompleteEngine<T>
+    ) {}
 
-  /**
-   * https://learn.microsoft.com/en-us/rest/api/searchservice/suggestions
-   * @param request
-   */
-  public suggest<Keys extends ODataSelect<T>>(request: SuggestRequest<T, Keys>): SuggestDocumentsResult<ODataSelectResult<T, Keys>> {
-    return this.suggestEngine.suggest(request);
-  }
+    /**
+     * https://learn.microsoft.com/en-us/rest/api/searchservice/addupdate-or-delete-documents
+     * @param documents
+     */
+    public postDocuments(documents: PostDocumentsRequest<T>) {
+        const result = this.dataStore.postDocuments(documents);
+
+        saveDocuments(this.name, this.dataStore.documents);
+
+        return result;
+    }
+
+    /**
+     * https://learn.microsoft.com/en-us/rest/api/searchservice/lookup-document
+     * @param request
+     */
+    public findDocument<Keys extends ODataSelect<T>>(
+        request: FindDocumentRequest<T, Keys>
+    ): ODataSelectResult<T, Keys> {
+        return this.dataStore.findDocument(request);
+    }
+
+    /**
+     * https://learn.microsoft.com/en-us/rest/api/searchservice/count-documents
+     */
+    public countDocuments(): number {
+        return this.dataStore.countDocuments();
+    }
+
+    /**
+     * https://learn.microsoft.com/en-us/rest/api/searchservice/search-documents
+     * @param request
+     */
+    public search<Keys extends ODataSelect<T>>(
+        request: SearchDocumentsRequest<T, Keys>
+    ): SearchDocumentsPageResult<ODataSelectResult<T, Keys>> {
+        return this.searchEngine.search(request);
+    }
+
+    /**
+     * https://learn.microsoft.com/en-us/rest/api/searchservice/autocomplete
+     * @param request
+     */
+    public autocomplete(
+        request: AutoCompleteRequest
+    ): AutoCompleteDocumentResult {
+        return this.autocompleteEngine.autocomplete(request);
+    }
+
+    /**
+     * https://learn.microsoft.com/en-us/rest/api/searchservice/suggestions
+     * @param request
+     */
+    public suggest<Keys extends ODataSelect<T>>(
+        request: SuggestRequest<T, Keys>
+    ): SuggestDocumentsResult<ODataSelectResult<T, Keys>> {
+        return this.suggestEngine.suggest(request);
+    }
 }
 
 export class Emulator {
-  private indices: Index<object>[] = [];
+    private indices: Index<object>[] = [];
 
-  /**
-   * https://learn.microsoft.com/en-us/rest/api/searchservice/create-index
-   */
-  public createIndex<T extends object>(options: {
-    name: string,
-    schema: Schema,
-    suggesters?: Suggester[],
-    scoringProfiles?: ScoringProfile<T>[],
-    defaultScoringProfile?: string,
-  }): Index<T> {
-    const index = Index.createIndex<T>(options);
-    this.indices.push(index as unknown as Index<object>);
-    return index;
-  }
+    constructor(saveDir?: string) {
+        const storedIndices = loadIndices(saveDir);
 
-  public getIndex<T extends object>(name: string): Index<T> {
-    return this.indices.find(v => v.name === name) as unknown as Index<T> ?? _throw(createHttp404());
-  }
+        for (const [name, storedIndex] of Object.entries(storedIndices)) {
+            const index = Index.loadIndex<object>(
+                {
+                    name,
+                    schema: storedIndex.schema,
+                    suggesters: storedIndex.suggesters,
+                    scoringProfiles: storedIndex.scoringProfiles,
+                    defaultScoringProfile: storedIndex.defaultScoringProfile
+                },
+                storedIndex.documents
+            );
+            this.indices.push(index as unknown as Index<object>);
+        }
+    }
+
+    /**
+     * https://learn.microsoft.com/en-us/rest/api/searchservice/create-index
+     */
+    public createIndex<T extends object>(options: {
+        name: string;
+        schema: Schema;
+        suggesters?: Suggester[];
+        scoringProfiles?: ScoringProfile<T>[];
+        defaultScoringProfile?: string;
+    }): Index<T> {
+        const index = Index.createIndex<T>(options);
+        this.indices.push(index as unknown as Index<object>);
+        return index;
+    }
+
+    public getIndex<T extends object>(name: string): Index<T> {
+        return (
+            (this.indices.find(
+                (v) => v.name === name
+            ) as unknown as Index<T>) ?? _throw(createHttp404())
+        );
+    }
+
+    public deleteIndex(name: string) : void {
+        const index = this.getIndex(name);
+        deleteIndex(name);
+        this.indices.splice(this.indices.indexOf(index), 1);
+    }
 }

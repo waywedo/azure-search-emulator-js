@@ -135,6 +135,7 @@ const analyzers: Record<AnalyzerId, AnalyzerFn> = {
     filter: v => !enStopwords.includes(v),
   }),
   'ms.lucene': value => analyzers['en.lucene'](value),
+  'en.microsoft': value => analyzers['en.lucene'](value),
 };
 
 export function score(entry: NGram[], match: NGram[]) {

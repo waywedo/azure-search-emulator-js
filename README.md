@@ -1,3 +1,7 @@
+Forked from [kawazoe/azure-search-emulator-js](https://github.com/kawazoe/azure-search-emulator-js)
+
+This version adds persistence to file and removes builds for browsers. It is designed to be used with Node only.
+
 # azure-search-emulator-js
 An unofficial javascript emulator for the
 [Microsoft Azure Cognitive Search](https://azure.microsoft.com/en-us/products/cognitive-services/#overview) API.
@@ -121,9 +125,9 @@ const emulator = new Emulator();
 
 // Create your index using your configurations.
 const peopleIndex = emulator.createIndex<People>({
-  name: 'people', 
-  schema: peopleSchema, 
-  suggesters: peopleSuggesters, 
+  name: 'people',
+  schema: peopleSchema,
+  suggesters: peopleSuggesters,
   scoringProfiles: peopleScoringProfiles,
   defaultScoringProfile: 'plain',
 });
@@ -209,7 +213,7 @@ All [documented OData features](https://learn.microsoft.com/en-us/azure/search/q
 - $top
 - $count
 - [Continuation Tokens](https://learn.microsoft.com/en-us/rest/api/searchservice/search-documents#request-body)
- 
+
 Most advanced search capabilities are supported but might behave differently from the real service as they depend on full
 text search statistics that aren't calculated in the same manner. They are:
 - [Scoring profiles](https://learn.microsoft.com/en-us/azure/search/index-add-scoring-profiles)
@@ -227,10 +231,10 @@ Keep in mind that this is still an early prototype and is not designed to be use
 The emulator does not use a full text search engine as its backend, yet. This means that while it does support the
 Simple Lucene Query Syntax, **it does not support the Full Lucene Query Syntax**.
 
-It does not support custom analyzers.  
-It does not support synonyms.  
-It does not support sharding, meaning that index coverage will always be 100%.  
-It does not support encryption.  
+It does not support custom analyzers.
+It does not support synonyms.
+It does not support sharding, meaning that index coverage will always be 100%.
+It does not support encryption.
 
 Do not expect search results from this emulator to match actual search results. They should make sense, but will not,
 and probably will never be, the same.

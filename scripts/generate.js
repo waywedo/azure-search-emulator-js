@@ -1,14 +1,14 @@
-import fs from 'fs';
-import jison from 'jison';
+import fs from "fs";
+import jison from "jison";
 
 function generate(source, destination) {
-    console.info('Generating parser for', source);
-    const grammar = fs.readFileSync(source, { encoding: 'utf-8' });
-    const parser = new jison.Parser(grammar, { moduleType: 'es' }).generate();
-    fs.writeFileSync(destination, parser, { encoding: 'utf-8' });
+    console.info("Generating parser for", source);
+    const grammar = fs.readFileSync(source, { encoding: "utf-8" });
+    const parser = new jison.Parser(grammar, { moduleType: "es" }).generate();
+    fs.writeFileSync(destination, parser, { encoding: "utf-8" });
 }
 
-generate('src/query-filter.jison', 'src/parsers/query-filter.js');
-generate('src/query-orderby.jison', 'src/parsers/query-orderby.js');
-generate('src/query-select.jison', 'src/parsers/query-select.js');
-generate('src/query-simple.jison', 'src/parsers/query-simple.js');
+generate("jison/query-filter.jison", "src/parsers/query-filter.js");
+generate("jison/query-orderby.jison", "src/parsers/query-orderby.js");
+generate("jison/query-select.jison", "src/parsers/query-select.js");
+generate("jison/query-simple.jison", "src/parsers/query-simple.js");
