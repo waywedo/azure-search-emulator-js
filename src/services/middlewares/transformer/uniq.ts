@@ -1,10 +1,10 @@
-import type { ODataSelect } from '../../../lib/odata';
+import type { ODataSelect, ODataSelectResult } from '../../../lib/odata';
 
 import type { ResultsMiddleware } from '../../searchBackend';
 import { uniq } from '../../../lib/iterables';
 import { ReductionResults } from '../../searchBackend';
 
-export function useUniq<T extends object, Keys extends ODataSelect<T>, R extends ReductionResults<T>['values'][number]>(
+export function useUniq<T extends object, Keys extends ODataSelect<T>, R extends ReductionResults<ODataSelectResult<T, Keys>>['values'][number]>(
   keySelector: (value: R) => unknown,
 ): ResultsMiddleware<T, Keys> {
   return (next) => {

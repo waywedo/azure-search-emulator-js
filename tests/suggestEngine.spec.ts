@@ -8,6 +8,7 @@ import {
     peopleToStoredDocument
 } from "./lib/mockSchema";
 
+import type { Suggester } from "../src";
 import { SuggestEngine, SearchBackend } from "../src";
 
 function createEmpty() {
@@ -123,6 +124,67 @@ describe("SuggestEngine", () => {
                 { "@search.text": "123", id: "1" }
             ]);
         });
+
+        it("should produce no suggestions when a match only occurs on a field not covered by the suggester", () => {
+            // When searchFields is omitted, search uses '*' (all fields), but the
+            // suggestion strategy only generates text for the suggester's configured fields.
+            // A document that matches exclusively on a non-suggester field scores but
+            // produces no @search.text entries — it silently contributes nothing to results.
+            const suggester: Suggester = {
+                name: "sg",
+                searchMode: "analyzingInfixMatching",
+                fields: ["fullName"],
+            };
+            const sut = new SuggestEngine<People>(
+                new SearchBackend<People>(peopleSchemaService, () => [
+                    peopleToStoredDocument({ id: "xyz", fullName: "foo" })
+                ]),
+                () => peopleSchemaKey,
+                (_name) => suggester
+            );
+
+            const results = sut.suggest({ suggesterName: "sg", search: "xyz" });
+
+            expect(results.value).toEqual([]);
+        });
+    });
+
+    describe("duplicates", () => {
+        it("should not return duplicate suggestions when the same text matches in multiple fields", () => {
+            const sut = new SuggestEngine(
+                new SearchBackend<People>(peopleSchemaService, () => [
+                    peopleToStoredDocument({ id: "abc", fullName: "abc" })
+                ]),
+                () => peopleSchemaKey,
+                peopleSuggesterProvider
+            );
+
+            const results = sut.suggest({ suggesterName: "sg", search: "abc" });
+
+            // Both id and fullName independently match "abc" and each generates
+            // @search.text: "abc". Without deduplication two identical entries are returned.
+            expect(results.value).toEqual([{ "@search.text": "abc", id: "abc" }]);
+        });
+
+        it("should not return duplicate suggestions when an array field contains repeated values", () => {
+            const sut = new SuggestEngine(
+                new SearchBackend<People>(peopleSchemaService, () => [
+                    peopleToStoredDocument({ id: "1", phones: ["abc", "abc"] })
+                ]),
+                () => peopleSchemaKey,
+                peopleSuggesterProvider
+            );
+
+            const results = sut.suggest({
+                suggesterName: "sg",
+                search: "abc",
+                searchFields: "phones"
+            });
+
+            // Each occurrence of "abc" in the phones array independently generates
+            // @search.text: "abc". Without deduplication two identical entries are returned.
+            expect(results.value).toEqual([{ "@search.text": "abc", id: "1" }]);
+        });
     });
 
     describe("select", () => {
@@ -200,6 +262,21 @@ describe("SuggestEngine", () => {
                 }
             ]);
         });
+
+        it("should not leak non-selected document fields into results", () => {
+            // suggestResult spreads `cur.selected ?? cur.document.original` into
+            // each result entry. This verifies the selected projection is used and that
+            // fields absent from the select clause do not appear in the output.
+            const sut = createComplex();
+
+            const results = sut.suggest({
+                suggesterName: "sg",
+                search: "foo",
+                select: ["id"]
+            });
+
+            expect(results.value).toEqual([{ "@search.text": "foo", id: "1" }]);
+        });
     });
 
     describe("limiter", () => {
@@ -221,6 +298,18 @@ describe("SuggestEngine", () => {
             });
 
             expect(results.value.length).toBe(100);
+        });
+
+        it("should return 0 results when top is 0", () => {
+            const sut = createLargeDataSet();
+
+            const results = sut.suggest({
+                suggesterName: "sg",
+                search: "1",
+                top: 0,
+            });
+
+            expect(results.value.length).toBe(0);
         });
     });
 

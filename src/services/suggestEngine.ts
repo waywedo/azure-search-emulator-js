@@ -14,6 +14,7 @@ import { useOrderBy } from './middlewares/transformer/orderBy';
 import { useCoverage } from './middlewares/transformer/coverage';
 import { useLimiterMiddleware } from './middlewares/transformer/limiter';
 import { useStripScore } from './middlewares/transformer/stripScore';
+import { useUniq } from './middlewares/transformer/uniq';
 import { createPlainQueryStrategy } from './analyzerService';
 
 export interface SuggestRequest<T extends object, Keys extends ODataSelect<T> | string> {
@@ -56,7 +57,7 @@ export class SuggestEngine<T extends object> {
     const documentMiddlewares = [
       ...(request.filter ? [useFiltering<T, Keys>(request.filter)] : []),
       useLuceneSearch<T, Keys>({
-        searchFields: request.searchFields ?? '*',
+        searchFields: request.searchFields ?? this.suggesterProvider(request.suggesterName).fields.join(', '),
         queryingStrategy: createPlainQueryStrategy({
           search: request.search,
           analysisMode: 'oneTermWithContext',
@@ -74,8 +75,9 @@ export class SuggestEngine<T extends object> {
 
     const resultsMiddlewares = [
       useOrderBy<T, Keys>(request.orderBy ?? 'search.score() desc'),
+      useUniq<T, Keys, SuggestResult<ODataSelectResult<T, Keys>>>((v) => v['@search.text']),
       ...(request.minimumCoverage ? [useCoverage<T, Keys>()] : []),
-      useLimiterMiddleware<T, Keys>(request.top && Math.min(request.top, maxPageSize) || defaultPageSize),
+      useLimiterMiddleware<T, Keys>(request.top != null ? Math.min(request.top, maxPageSize) : defaultPageSize),
       useStripScore<T, Keys>(),
     ];
 

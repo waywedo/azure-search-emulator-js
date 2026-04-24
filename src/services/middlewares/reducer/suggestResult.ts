@@ -11,7 +11,7 @@ export function useSuggestResult<T extends object, Keys extends ODataSelect<T>>(
         .map((s) => ({
           '@search.score': cur.globalScore,
           '@search.text': `${s}`,
-          ...cur.selected ?? cur.document.original,
+          ...(cur.selected ?? cur.document.original),
         } as SuggestResult<ODataSelectResult<T, Keys>>)),
       );
 
